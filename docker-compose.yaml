@@ -1,0 +1,20 @@
+version: '3'
+services:
+  web:
+    build: .
+    ports:
+      - "3000:3000"
+    depends_on:
+      - mongo
+      - socket_server
+  socket_server:
+    build: .
+    command: python socket_server.py
+    depends_on:
+      - mongo
+  mongo:
+    image: mongo
+    volumes:
+      - mongodb_data:/data/db
+volumes:
+  mongodb_data:
