@@ -1,20 +1,29 @@
-version: '3'
+version: '3.8'
+
 services:
   web:
     build: .
     ports:
       - "3000:3000"
+    volumes:
+      - .:/app
     depends_on:
       - mongo
-      - socket_server
-  socket_server:
+
+  socket:
     build: .
     command: python socket_server.py
+    ports:
+      - "5000:5000"
     depends_on:
       - mongo
+
   mongo:
-    image: mongo
+    image: mongo:4.4.6
+    ports:
+      - "27017:27017"
     volumes:
-      - mongodb_data:/data/db
+      - mongo-data:/data/db
+
 volumes:
-  mongodb_data:
+  mongo-data:
