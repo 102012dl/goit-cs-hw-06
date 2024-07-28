@@ -1,58 +1,62 @@
-import asyncio
-import datetime
+import socketserver
+import http.server
+import threading
+import os
+from urllib.parse import urlparse, parse_qs
+from datetime import datetime
 import socket
-from pathlib import Path
-from urllib.parse import parse_qs
-BASE_DIR = Path()
-SOCKET_SERVER = ('localhost', 5000)
-def send_to_socket_server(data):
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        s.sendto(data.encode(), SOCKET_SERVER)
-async def handle_request(reader, writer):
-    request = await reader.read(1024)
-    request = request.decode()
-    
-    method, path, _ = request.split('\n')[0].split()
-    
-    if method == 'GET':
-        if path == '/':
-            filename = BASE_DIR / 'templates' / 'index.html'
-        elif path == '/message':
-            filename = BASE_DIR / 'templates' / 'message.html'
-        elif path.startswith('/static/'):
-            filename = BASE_DIR / path[1:]
+
+HOST, PORT = "0.0.0.0", 3000
+SOCKET_SERVER_HOST, SOCKET_SERVER_PORT = "0.0.0.0", 5000
+
+
+class CustomHandler(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        parsed_path = urlparse(self.path)
+        if parsed_path.path == '/':
+            self.path = '/templates/index.html'
+        elif parsed_path.path == '/message':
+            self.path = '/templates/message.html'
+        elif parsed_path.path.startswith('/static/'):
+            self.path = self.path
         else:
-            filename = BASE_DIR / 'templates' / 'error.html'
-            
-        if filename.exists():
-            with open(filename, 'rb') as f:
-                content = f.read()
-            writer.write(b'HTTP/1.1 200 OK\n\n' + content)
+            self.path = '/templates/error.html'
+        return http.server.SimpleHTTPRequestHandler.do_GET(self)
+
+    def do_POST(self):
+        parsed_path = urlparse(self.path)
+        if parsed_path.path == '/submit':
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            post_data = parse_qs(post_data.decode('utf-8'))
+
+            username = post_data.get('username', [''])[0]
+            message = post_data.get('message', [''])[0]
+
+            data = {
+                "date": str(datetime.now()),
+                "username": username,
+                "message": message
+            }
+
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.connect((SOCKET_SERVER_HOST, SOCKET_SERVER_PORT))
+                s.sendall(str(data).encode('utf-8'))
+
+            self.send_response(302)
+            self.send_header('Location', '/')
+            self.end_headers()
         else:
-            with open(BASE_DIR / 'templates' / 'error.html', 'rb') as f:
-                content = f.read()
-            writer.write(b'HTTP/1.1 404 Not Found\n\n' + content)
-    
-    elif method == 'POST' and path == '/message':
-        content_length = int(request.split('Content-Length: ')[1].split('\n')[0])
-        body = await reader.read(content_length)
-        data = parse_qs(body.decode())
-        
-        message = {
-            'date': datetime.datetime.now().isoformat(),
-            'username': data['username'][0],
-            'message': data['message'][0]
-        }
-        
-        send_to_socket_server(str(message))
-        
-        writer.write(b'HTTP/1.1 302 Found\nLocation: /\n\n')
-    
-    await writer.drain()
-    writer.close()
-async def main():
-    server = await asyncio.start_server(handle_request, '0.0.0.0', 3000)
-    async with server:
-        await server.serve_forever()
-if __name__ == '__main__':
-    asyncio.run(main())
+            self.send_error(404)
+
+
+def run_server():
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    server_address = (HOST, PORT)
+    httpd = socketserver.TCPServer(server_address, CustomHandler)
+    print(f"Serving HTTP on {HOST} port {PORT}...")
+    httpd.serve_forever()
+
+
+if __name__ == "__main__":
+    threading.Thread(target=run_server).start()
