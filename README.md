@@ -9,3 +9,8 @@ docker-compose up --build
 T 12 HW 
 
 Доопрацювання 
+
+Запуск 
+
+bash 
+docker-compose up 
