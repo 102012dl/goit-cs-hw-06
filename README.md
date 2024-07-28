@@ -13,4 +13,5 @@ T 12 HW
 Запуск 
 
 bash 
+
 docker-compose up 
